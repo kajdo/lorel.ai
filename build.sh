@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -e
 
+# Parse arguments
+CLEAN_DOCKER=false
+PUSH_DOCKER=false
+for arg in "$@"; do
+    case $arg in
+        --clean)
+            CLEAN_DOCKER=true
+            ;;
+        --push)
+            PUSH_DOCKER=true
+            ;;
+    esac
+done
+
 # ===================================
 # Configuration
 # ===================================
@@ -35,9 +49,13 @@ log_error() {
 # ===================================
 # Step 1: Docker Cleanup
 # ===================================
-log_info "Step 1: Cleaning up Docker resources..."
-yes | { docker system prune -af && docker builder prune -af && docker volume prune && docker image prune -a; }
-log_info "Docker cleanup completed."
+if [ "$CLEAN_DOCKER" = true ]; then
+    log_info "Step 1: Cleaning up Docker resources..."
+    yes | { docker system prune -af && docker builder prune -af && docker volume prune && docker image prune -a; }
+    log_info "Docker cleanup completed."
+else
+    log_info "Step 1: Skipping Docker cleanup (use --clean flag to enable)"
+fi
 
 # ===================================
 # Step 2: Check if Dockerfile exists
@@ -63,31 +81,33 @@ else
     exit 1
 fi
 
-# # ===================================
-# # Step 4: Push Docker image
-# # ===================================
-# log_info "Step 3: Pushing Docker image to Docker.io..."
-# log_info "Pushing: ${FULL_IMAGE_NAME}"
-#
-# docker push "${FULL_IMAGE_NAME}"
-#
-# if [ $? -eq 0 ]; then
-#     log_info "Docker image pushed successfully!"
-#     echo ""
-#     log_info "================================"
-#     log_info "Image is ready for deployment!"
-#     log_info "================================"
-#     log_info "Image: ${FULL_IMAGE_NAME}"
-#     log_info ""
-#     log_info "Use this image in your RunPod template:"
-#     echo "  ${FULL_IMAGE_NAME}"
-#     echo ""
-#     log_info "Expose ports:"
-#     echo "  - 22 (SSH)"
-#     echo "  - 8880 (Kokoro API)"
-# else
-#     log_error "Docker image push failed!"
-#     exit 1
-# fi
-#
-echo $FULL_IMAGE_NAME
+# ===================================
+# Step 4: Push Docker image
+# ===================================
+if [ "$PUSH_DOCKER" = true ]; then
+    log_info "Step 3: Pushing Docker image to Docker.io..."
+    log_info "Pushing: ${FULL_IMAGE_NAME}"
+
+    docker push "${FULL_IMAGE_NAME}"
+
+    if [ $? -eq 0 ]; then
+        log_info "Docker image pushed successfully!"
+        echo ""
+        log_info "================================"
+        log_info "Image is ready for deployment!"
+        log_info "================================"
+        log_info "Image: ${FULL_IMAGE_NAME}"
+        log_info ""
+        log_info "Use this image in your RunPod template:"
+        echo "  ${FULL_IMAGE_NAME}"
+        echo ""
+        log_info "Expose ports:"
+        echo "  - 22 (SSH)"
+        echo "  - 8880 (Kokoro API)"
+    else
+        log_error "Docker image push failed!"
+        exit 1
+    fi
+else
+    log_info "Step 3: Skipping Docker push (use --push flag to enable)"
+fi
