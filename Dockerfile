@@ -71,7 +71,9 @@ RUN /app/.venv/bin/python docker/scripts/download_model.py --output api/src/mode
 # Download STT service script from GitHub
 RUN curl -L https://raw.githubusercontent.com/kajdo/lorel.ai/main/helper/stt_service.py -o /app/stt_service.py
 
-# Pre-download the Whisper model
+# Pre-download the Whisper model (small.en for low latency)
+RUN mkdir -p /app/models/whisper && \
+    /app/.venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('small.en', device='cpu', download_root='/app/models/whisper')"
 RUN mkdir -p /app/models/whisper && \
     /app/.venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('distil-large-v3', device='cpu', download_root='/app/models/whisper')"
 
