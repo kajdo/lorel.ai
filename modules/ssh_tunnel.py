@@ -31,6 +31,7 @@ class SSHTunnel:
         # Tunnel configuration
         self.tunnels = [
             {"local": 8880, "remote": 8880, "name": "Kokoro API"},
+            {"local": 8881, "remote": 8881, "name": "Whisper Service"},
             {"local": 2222, "remote": 22, "name": "SSH"}
         ]
 

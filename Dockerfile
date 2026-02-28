@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
 # Install Python and other dependencies
-RUN apt-get update -y &&  \
+RUN apt-get update -y && \
     apt-get install -y \
     python3.10 \
     python3-venv \
@@ -23,7 +23,7 @@ RUN apt-get update -y &&  \
     g++ \
     cmake && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
-    mkdir -p /usr/share/espeak-ng-data &&  \
+    mkdir -p /usr/share/espeak-ng-data && \
     ln -s /usr/lib/*/espeak-ng-data/* /usr/share/espeak-ng-data/ && \
     # Install uv package manager
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
@@ -44,12 +44,12 @@ WORKDIR /app
 # Project files are already cloned
 RUN chmod +x docker/scripts/*.sh
 
-# Install Python dependencies with GPU extras
+# Install Python dependencies
+# Using uv pip install for faster-whisper avoids the 'No module named pip' error
 RUN uv venv --python 3.10 && \
-    # uv pip install faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 && \
-    # if faster-whisper complaints about cuda "Could not load library libcublas.so.12" we have to use above pip install!!
-    uv pip install faster-whisper && \
-    uv sync --extra gpu --no-cache
+    uv sync --extra gpu --no-cache && \
+    uv pip install --no-cache-dir faster-whisper && \
+    uv pip install --no-cache-dir python-multipart
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -61,13 +61,18 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PHONEMIZER_ESPEAK_DATA=/usr/share/espeak-ng-data \
     ESPEAK_DATA_PATH=/usr/share/espeak-ng-data \
     DEVICE="gpu" \
-    # SSH root password (change for production)
     ROOT_PASSWORD=kokoro_runpod \
-    # Ensure CTranslate2 can see the system's CUDA/cuDNN libs (if it doesn't work see pip install command above)
     LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
 
-# Download model during build
-RUN python docker/scripts/download_model.py --output api/src/models/v1_0
+# Download Kokoro model
+RUN /app/.venv/bin/python docker/scripts/download_model.py --output api/src/models/v1_0
+
+# Download STT service script from GitHub
+RUN curl -L https://raw.githubusercontent.com/kajdo/lorel.ai/main/helper/stt_service.py -o /app/stt_service.py
+
+# Pre-download the Whisper model
+RUN mkdir -p /app/models/whisper && \
+    /app/.venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('distil-large-v3', device='cpu', download_root='/app/models/whisper')"
 
 # Setup SSH configuration
 USER root
@@ -80,25 +85,17 @@ RUN mkdir /var/run/sshd && \
     echo "UseDNS no" >> /etc/ssh/sshd_config && \
     echo "TCPKeepAlive yes" >> /etc/ssh/sshd_config
 
-USER root
-
 # Create startup script
 RUN echo '#!/bin/bash\n\
-    # Start SSH service\n\
     service ssh start\n\
-    \n\
-    # GPU cleanup\n\
+    /app/.venv/bin/python /app/stt_service.py &\n\
     fuser -k /dev/nvidia0 || true\n\
     sleep 1\n\
-    \n\
-    # Optional: Verify STT can see the GPU
-    python3 -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cuda')" || echo "STT GPU Check Failed"\n\
-    # Start Kokoro FastAPI server\n\
-    exec uvicorn api.src.main:app --host 0.0.0.0 --port 8880 --log-level info' > /start.sh && \
+    exec /app/.venv/bin/uvicorn api.src.main:app --host 0.0.0.0 --port 8880 --log-level info' > /start.sh && \
     chmod +x /start.sh
 
 # Expose ports
-EXPOSE 22 8880
+EXPOSE 22 8880 8881
 
 # Start the service
 CMD ["/start.sh"]

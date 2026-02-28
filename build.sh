@@ -6,12 +6,12 @@ CLEAN_DOCKER=false
 PUSH_DOCKER=false
 for arg in "$@"; do
     case $arg in
-        --clean)
-            CLEAN_DOCKER=true
-            ;;
-        --push)
-            PUSH_DOCKER=true
-            ;;
+    --clean)
+        CLEAN_DOCKER=true
+        ;;
+    --push)
+        PUSH_DOCKER=true
+        ;;
     esac
 done
 
@@ -104,6 +104,7 @@ if [ "$PUSH_DOCKER" = true ]; then
         log_info "Expose ports:"
         echo "  - 22 (SSH)"
         echo "  - 8880 (Kokoro API)"
+        echo "  - 8881 (whisper service)"
     else
         log_error "Docker image push failed!"
         exit 1

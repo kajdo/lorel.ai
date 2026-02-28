@@ -7,7 +7,12 @@ import os
 
 app = FastAPI()
 # Load model from the path we will pre-download to
-model = WhisperModel("/app/models/whisper", device="cuda", compute_type="float16")
+model = WhisperModel(
+    "/app/models/whisper",
+    device="cuda",
+    compute_type="float16",
+    download_root="/app/models/whisper",
+)
 
 
 @app.post("/transcribe")
