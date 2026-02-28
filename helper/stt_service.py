@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
 from faster_whisper import WhisperModel
+import numpy as np
 import uvicorn
 import shutil
 import os
@@ -63,6 +64,65 @@ async def transcribe(file: UploadFile = File(...)):
         except Exception as e:
             print(f"Failed to delete temp file {temp_path}: {e}", flush=True)
 
+
+@app.websocket("/ws/transcribe")
+async def websocket_transcribe(websocket: WebSocket):
+    """
+    Streaming transcription via WebSocket.
+    
+    Protocol:
+    - Client sends binary audio chunks (int16 PCM @ 16kHz)
+    - Client sends b"END" to signal end of speech and trigger transcription
+    - Server returns {"text": "...", "type": "final"}
+    - Server may send {"type": "buffering", "duration": X} during buffering
+    
+    No disk I/O - audio is buffered in memory as numpy array.
+    """
+    await websocket.accept()
+    audio_buffer = np.array([], dtype=np.float32)
+    SAMPLE_RATE = 16000
+    END_SIGNAL = b"END"
+    
+    try:
+        while True:
+            data = await websocket.receive_bytes()
+            
+            if data == END_SIGNAL:
+                # Transcribe the buffered audio
+                if len(audio_buffer) > 0:
+                    try:
+                        segments, _ = model.transcribe(
+                            audio_buffer,
+                            beam_size=1,
+                            vad_filter=False,
+                            temperature=0.0,
+                        )
+                        text = " ".join([s.text for s in segments]).strip()
+                        await websocket.send_json({"type": "final", "text": text})
+                    except Exception as e:
+                        print(f"Transcription error: {e}", flush=True)
+                        await websocket.send_json({"type": "error", "message": str(e)})
+                else:
+                    await websocket.send_json({"type": "final", "text": ""})
+                
+                # Reset buffer for next utterance
+                audio_buffer = np.array([], dtype=np.float32)
+            else:
+                # Convert int16 bytes to float32 and append to buffer
+                chunk = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                audio_buffer = np.concatenate([audio_buffer, chunk])
+                
+                # Optionally notify client of buffer status
+                duration = len(audio_buffer) / SAMPLE_RATE
+                await websocket.send_json({"type": "buffering", "duration": round(duration, 2)})
+                
+    except WebSocketDisconnect:
+        print("WebSocket client disconnected", flush=True)
+    except Exception as e:
+        print(f"WebSocket error: {e}", flush=True)
+    finally:
+        # Cleanup: buffer is freed when connection closes
+        audio_buffer = None
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8881, log_level="info")
