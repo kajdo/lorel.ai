@@ -9,6 +9,7 @@ from fastapi import (
 from faster_whisper import WhisperModel
 import numpy as np
 import time
+import asyncio
 import uvicorn
 import shutil
 import os
@@ -19,7 +20,7 @@ app = FastAPI()
 
 # Load model from the path we will pre-download to
 model = WhisperModel(
-    "small.en",  # Faster than distil-large-v3 (3-5x speedup)
+    "small.en",  # Fast and accurate
     device="cuda",
     compute_type="float16",
     download_root="/app/models/whisper",
@@ -75,6 +76,17 @@ async def transcribe(file: UploadFile = File(...)):
             print(f"Failed to delete temp file {temp_path}: {e}", flush=True)
 
 
+def transcribe_audio(audio_buffer: np.ndarray) -> str:
+    """Synchronous transcription function to run in thread."""
+    segments, _ = model.transcribe(
+        audio_buffer,
+        beam_size=1,
+        vad_filter=False,
+        temperature=0.0,
+    )
+    return " ".join([s.text for s in segments]).strip()
+
+
 @app.websocket("/ws/transcribe")
 async def websocket_transcribe(websocket: WebSocket):
     """
@@ -82,66 +94,52 @@ async def websocket_transcribe(websocket: WebSocket):
 
     Protocol:
     - Client sends binary audio chunks (int16 PCM @ 16kHz)
-    - Client sends b"END" to signal end of speech and trigger transcription
-    - Server returns {"text": "...", "type": "final"}
-    - Server may send {"type": "buffering", "duration": X} during buffering
-
-    No disk I/O - audio is buffered in memory as numpy array.
+    - Client sends b"END" to signal end of speech
+    - Server returns {"type": "final", "text": "...", "transcribe_ms": X}
     """
     await websocket.accept()
+    
     audio_buffer = np.array([], dtype=np.float32)
     SAMPLE_RATE = 16000
     END_SIGNAL = b"END"
+    total_bytes = 0
 
     try:
         while True:
             data = await websocket.receive_bytes()
 
             if data == END_SIGNAL:
-                # Transcribe the buffered audio
                 audio_duration = len(audio_buffer) / SAMPLE_RATE
-                transcribe_start = time.time()
-                print(f"[STT] Starting transcription: {audio_duration:.2f}s audio", flush=True)
+                start_time = time.time()
+                
+                print(f"[STT] Received {total_bytes} bytes, buffer size: {len(audio_buffer)} samples, {audio_duration:.2f}s", flush=True)
                 
                 if len(audio_buffer) > 0:
                     try:
-                        segments, _ = model.transcribe(
-                            audio_buffer,
-                            beam_size=1,
-                            vad_filter=False,
-                            temperature=0.0,
-                        )
-                        text = " ".join([s.text for s in segments]).strip()
-                        transcribe_time = (time.time() - transcribe_start) * 1000
-                        print(f"[STT] Done in {transcribe_time:.0f}ms (RTF: {transcribe_time/1000/audio_duration:.3f})", flush=True)
-                        await websocket.send_json({"type": "final", "text": text, "transcribe_ms": round(transcribe_time)})
+                        loop = asyncio.get_event_loop()
+                        text = await loop.run_in_executor(None, transcribe_audio, audio_buffer)
+                        transcribe_ms = (time.time() - start_time) * 1000
+                        print(f"[STT] Done in {transcribe_ms:.0f}ms (RTF: {transcribe_ms/1000/audio_duration:.3f})", flush=True)
+                        await websocket.send_json({"type": "final", "text": text, "transcribe_ms": round(transcribe_ms)})
                     except Exception as e:
                         print(f"Transcription error: {e}", flush=True)
                         await websocket.send_json({"type": "error", "message": str(e)})
                 else:
                     await websocket.send_json({"type": "final", "text": ""})
 
-                # Reset buffer for next utterance
+                # Reset for next utterance
                 audio_buffer = np.array([], dtype=np.float32)
+                total_bytes = 0
             else:
                 # Convert int16 bytes to float32 and append to buffer
                 chunk = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
                 audio_buffer = np.concatenate([audio_buffer, chunk])
-
-                # Optionally notify client of buffer status
-                duration = len(audio_buffer) / SAMPLE_RATE
-                await websocket.send_json(
-                    {"type": "buffering", "duration": round(duration, 2)}
-                )
-
+                total_bytes += len(data)
     except WebSocketDisconnect:
         print("WebSocket client disconnected", flush=True)
     except Exception as e:
         print(f"WebSocket error: {e}", flush=True)
     finally:
-        # Cleanup: buffer is freed when connection closes
         audio_buffer = None
-
-
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8881, log_level="info")
