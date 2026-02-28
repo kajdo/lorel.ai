@@ -94,8 +94,8 @@ RUN echo '#!/bin/bash\n\
     exec /app/.venv/bin/uvicorn api.src.main:app --host 0.0.0.0 --port 8880 --log-level info' > /start.sh && \
     chmod +x /start.sh
 
-# Expose ports
-EXPOSE 22 8880 8881
+# Expose ports -- should not be necessary if everything is done via ssh-tunnels
+# EXPOSE 22 8880 8881
 
 # Start the service
 CMD ["/start.sh"]
