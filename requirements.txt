@@ -1,0 +1,7 @@
+# Lorel.ai RunPod Setup Dependencies
+requests>=2.31.0
+rich>=13.7.0
+pexpect>=4.9.0
+
+# Optional: python-dotenv for .env loading
+python-dotenv>=1.0.0
