@@ -8,20 +8,20 @@ ENV PYTHONUNBUFFERED=1
 # Install Python and other dependencies
 RUN apt-get update -y &&  \
     apt-get install -y \
-        python3.10 \
-        python3-venv \
-        espeak-ng \
-        espeak-ng-data \
-        libsndfile1 \
-        ffmpeg \
-        curl \
-        git \
-        openssh-server \
-        net-tools \
-        zstd \
-        psmisc \
-        g++ \
-        cmake && \
+    python3.10 \
+    python3-venv \
+    espeak-ng \
+    espeak-ng-data \
+    libsndfile1 \
+    ffmpeg \
+    curl \
+    git \
+    openssh-server \
+    net-tools \
+    zstd \
+    psmisc \
+    g++ \
+    cmake && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
     mkdir -p /usr/share/espeak-ng-data &&  \
     ln -s /usr/lib/*/espeak-ng-data/* /usr/share/espeak-ng-data/ && \
@@ -46,6 +46,9 @@ RUN chmod +x docker/scripts/*.sh
 
 # Install Python dependencies with GPU extras
 RUN uv venv --python 3.10 && \
+    # uv pip install faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 && \
+    # if faster-whisper complaints about cuda "Could not load library libcublas.so.12" we have to use above pip install!!
+    uv pip install faster-whisper && \
     uv sync --extra gpu --no-cache
 
 # Set environment variables
@@ -59,7 +62,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     ESPEAK_DATA_PATH=/usr/share/espeak-ng-data \
     DEVICE="gpu" \
     # SSH root password (change for production)
-    ROOT_PASSWORD=kokoro_runpod
+    ROOT_PASSWORD=kokoro_runpod \
+    # Ensure CTranslate2 can see the system's CUDA/cuDNN libs (if it doesn't work see pip install command above)
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
 
 # Download model during build
 RUN python docker/scripts/download_model.py --output api/src/models/v1_0
@@ -86,6 +91,8 @@ RUN echo '#!/bin/bash\n\
     fuser -k /dev/nvidia0 || true\n\
     sleep 1\n\
     \n\
+    # Optional: Verify STT can see the GPU
+    python3 -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cuda')" || echo "STT GPU Check Failed"\n\
     # Start Kokoro FastAPI server\n\
     exec uvicorn api.src.main:app --host 0.0.0.0 --port 8880 --log-level info' > /start.sh && \
     chmod +x /start.sh
