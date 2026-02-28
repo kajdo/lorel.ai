@@ -49,7 +49,8 @@ RUN chmod +x docker/scripts/*.sh
 RUN uv venv --python 3.10 && \
     uv sync --extra gpu --no-cache && \
     uv pip install --no-cache-dir faster-whisper && \
-    uv pip install --no-cache-dir python-multipart
+    uv pip install --no-cache-dir python-multipart && \
+    uv pip install --no-cache-dir websockets
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
