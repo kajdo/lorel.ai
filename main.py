@@ -119,11 +119,29 @@ def cmd_deploy(args):
     
     console.print(f"[dim]Found {len(candidates)} candidate GPU(s), will try in price order...[/dim]")
 
+    # Read SSH public key for certificate authentication
+    import os
+    public_key = None
+    key_paths = [
+        os.path.expanduser("~/.ssh/id_ed25519.pub"),
+        os.path.expanduser("~/.ssh/id_rsa.pub"),
+        os.path.expanduser("~/.ssh/id_ecdsa.pub"),
+    ]
+    for path in key_paths:
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                public_key = f.read().strip()
+            console.print(f"[dim]Using SSH key: {path}[/dim]")
+            break
+    if not public_key:
+        console.print("[yellow]Warning: No SSH public key found. Certificate authentication may not work.[/yellow]")
+        console.print("[dim]Generate one with: ssh-keygen -t ed25519[/dim]")
+
     # Try each GPU in order until one succeeds
     pod = None
     for i, selection in enumerate(candidates):
         console.print(f"\n[green]Trying GPU {i+1}/{len(candidates)}: {selection.display_name} @ ${selection.cost_per_hour:.3f}/hr[/green]")
-        
+
         try:
             pod = _pod_manager.create_pod(
                 docker_image=config.docker_image,
@@ -131,11 +149,11 @@ def cmd_deploy(args):
                 cloud_type=cloud_type,
                 is_spot=is_spot,
                 container_disk_gb=config.container_disk_gb,
-                ssh_password=config.ssh_password
+                public_key=public_key
             )
             _current_pod_id = pod.id
             break  # Success!
-            
+            break  # Success!
         except NoInstancesAvailableError as e:
             console.print(f"[yellow]No instances available for {selection.display_name}, trying next GPU...[/yellow]")
             continue
@@ -173,12 +191,10 @@ def cmd_deploy(args):
         cleanup()
         return 1
 
-    # RunPod uses password auth, not SSH keys (key must be registered in RunPod UI)
+    # SSH key authentication is required (certificate-based)
     _ssh_tunnel = SSHTunnel(
         pod_ip=pod.public_ip,
-        ssh_port=pod.ssh_port,
-        ssh_key_path=None,  # Don't use local SSH key - RunPod requires password
-        password=config.ssh_password
+        ssh_port=pod.ssh_port
     )
 
     success, message, local_ip = _ssh_tunnel.start_tunnels()

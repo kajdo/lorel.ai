@@ -62,7 +62,6 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PHONEMIZER_ESPEAK_DATA=/usr/share/espeak-ng-data \
     ESPEAK_DATA_PATH=/usr/share/espeak-ng-data \
     DEVICE="gpu" \
-    ROOT_PASSWORD=kokoro_runpod \
     LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
 
 # Download Kokoro model
@@ -77,25 +76,37 @@ RUN mkdir -p /app/models/whisper && \
 RUN mkdir -p /app/models/whisper && \
     /app/.venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('distil-large-v3', device='cpu', download_root='/app/models/whisper')"
 
-# Setup SSH configuration
+# Setup SSH configuration - certificate authentication only (no password)
 USER root
 RUN mkdir /var/run/sshd && \
-    echo "root:${ROOT_PASSWORD}" | chpasswd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config && \
+    sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config && \
+    echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config && \
     echo "AllowTcpForwarding yes" >> /etc/ssh/sshd_config && \
     echo "GatewayPorts yes" >> /etc/ssh/sshd_config && \
     echo "UseDNS no" >> /etc/ssh/sshd_config && \
     echo "TCPKeepAlive yes" >> /etc/ssh/sshd_config
 
 # Create startup script
-RUN echo '#!/bin/bash\n\
-    service ssh start\n\
-    /app/.venv/bin/python /app/stt_service.py &\n\
-    fuser -k /dev/nvidia0 || true\n\
-    sleep 1\n\
-    exec /app/.venv/bin/uvicorn api.src.main:app --host 0.0.0.0 --port 8880 --log-level info' > /start.sh && \
-    chmod +x /start.sh
+RUN cat > /start.sh << 'EOF'
+#!/bin/bash
+
+# Setup SSH Key if provided via Environment Variable
+if [ ! -z "$PUBLIC_KEY" ]; then
+    mkdir -p /root/.ssh
+    echo "$PUBLIC_KEY" > /root/.ssh/authorized_keys
+    chmod 700 /root/.ssh
+    chmod 600 /root/.ssh/authorized_keys
+fi
+
+service ssh start
+/app/.venv/bin/python /app/stt_service.py &
+fuser -k /dev/nvidia0 || true
+sleep 1
+exec /app/.venv/bin/uvicorn api.src.main:app --host 0.0.0.0 --port 8880 --log-level info
+EOF
+RUN chmod +x /start.sh
 
 # Expose ports -- should not be necessary if everything is done via ssh-tunnels
 # EXPOSE 22 8880 8881

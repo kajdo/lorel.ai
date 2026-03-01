@@ -13,12 +13,10 @@ class Config:
     """Manages configuration from .env file and environment variables."""
 
     api_key: str = ""
-    ssh_password: str = "kokoro_runpod"
     min_vram_gb: int = 16
     max_cost_per_hour: float = 1.0
     docker_image: str = "kajdo/kokoro-fastapi:latest"
     container_disk_gb: int = 50
-
     # Internal paths
     env_path: Path = field(default_factory=lambda: Path.cwd() / ".env", repr=False)
 
@@ -37,12 +35,10 @@ class Config:
     def _load_values(self) -> None:
         """Load configuration values from environment."""
         self.api_key = os.environ.get("RUNPOD_API_KEY", "") or ""
-        self.ssh_password = os.environ.get("SSH_PASSWORD", "") or "kokoro_runpod"
         self.min_vram_gb = int(os.environ.get("MIN_VRAM_GB", "") or "16")
         self.max_cost_per_hour = float(os.environ.get("MAX_COST_PER_HOUR", "") or "1.0")
         self.docker_image = os.environ.get("DOCKER_IMAGE", "") or "kajdo/kokoro-fastapi:latest"
         self.container_disk_gb = int(os.environ.get("CONTAINER_DISK_GB", "") or "50")
-
     def validate(self) -> Tuple[bool, str]:
         """Validate configuration and return (is_valid, error_message)."""
         if not self.api_key:
@@ -67,9 +63,6 @@ class Config:
         lines = [
             "# Required: RunPod API Key (get from https://www.runpod.io/console/user/settings)",
             f"RUNPOD_API_KEY={self.api_key}",
-            "",
-            "# Optional: SSH password (defaults to container default if not set)",
-            f"SSH_PASSWORD={self.ssh_password}",
             "",
             "# Optional: GPU selection defaults",
             f"MIN_VRAM_GB={self.min_vram_gb}",

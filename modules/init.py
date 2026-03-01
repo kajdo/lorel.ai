@@ -47,15 +47,7 @@ def run_interactive_setup(config: Optional[Config] = None) -> bool:
         return False
     console.print("[green]✓ API key is valid[/green]")
 
-    # SSH Password (optional)
-    console.print("\n[bold]SSH Configuration[/bold]")
-    console.print("[dim]Default: kokoro_runpod[/dim]")
-    config.ssh_password = _prompt_with_default(
-        "SSH Password",
-        config.ssh_password,
-        required=False
-    )
-
+    # GPU settings
     # GPU settings
     console.print("\n[bold]GPU Settings[/bold]")
 
