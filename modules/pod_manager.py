@@ -26,21 +26,22 @@ class PodManager:
         cloud_type: str = "SECURE",
         is_spot: bool = False,
         container_disk_gb: int = 50,
-        ssh_password: Optional[str] = None
+        public_key: Optional[str] = None
     ) -> Pod:
         """Create a new pod with the specified configuration."""
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         name = f"kokoro-pod-{timestamp}"
 
         env = {}
-        if ssh_password:
-            env["ROOT_PASSWORD"] = ssh_password
+        if public_key:
+            env["PUBLIC_KEY"] = public_key
 
         console.print(f"[cyan]Creating pod '{name}'...[/cyan]")
         console.print(f"  [dim]Image: {docker_image}[/dim]")
         console.print(f"  [dim]GPU: {gpu_type_id}[/dim]")
         console.print(f"  [dim]Cloud: {cloud_type}{' (Spot)' if is_spot else ''}[/dim]")
-
+        if public_key:
+            console.print(f"  [dim]SSH: Certificate authentication configured[/dim]")
         pod = self.api_client.create_pod(
             name=name,
             docker_image=docker_image,

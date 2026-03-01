@@ -18,14 +18,12 @@ class SSHTunnel:
         pod_ip: str,
         ssh_port: int,
         username: str = "root",
-        ssh_key_path: Optional[str] = None,
-        password: Optional[str] = None
+        ssh_key_path: Optional[str] = None
     ):
         self.pod_ip = pod_ip
         self.ssh_port = ssh_port
         self.username = username
-        self.ssh_key_path = ssh_key_path
-        self.password = password
+        self.ssh_key_path = ssh_key_path or self.find_ssh_key()
         self.processes: List[Any] = []
 
         # Tunnel configuration
@@ -126,41 +124,6 @@ class SSHTunnel:
         except Exception as e:
             raise RuntimeError(f"Failed to create SSH tunnel: {e}")
 
-    def _create_tunnel_with_password(self, ssh_cmd: List[str]) -> Any:
-        """Create SSH tunnel using password authentication with pexpect."""
-        try:
-            import pexpect
-        except ImportError:
-            raise RuntimeError("pexpect is required for password authentication. Install with: pip install pexpect")
-
-        ssh_str = " ".join(ssh_cmd)
-        console.print("[dim]Starting tunnel with password authentication...[/dim]")
-        child = None
-
-        try:
-            child = pexpect.spawn(ssh_str, timeout=30)
-            index = child.expect([r"password:", pexpect.EOF, pexpect.TIMEOUT])
-
-            if index == 0 and self.password:
-                child.sendline(self.password)
-                # Wait for connection - if tunnel works, expect will timeout (no EOF)
-                # If auth fails, we'll get EOF
-                try:
-                    child.expect(pexpect.EOF, timeout=5)
-                except pexpect.TIMEOUT:
-                    pass  # Timeout is expected when tunnel is running
-            # If TIMEOUT (index 2) without password prompt, tunnel might already be running
-            # If EOF (index 1), connection closed
-
-            return child
-
-        except pexpect.TIMEOUT:
-            # Timeout waiting for password prompt - might be working already
-            if child:
-                return child
-            raise RuntimeError("SSH connection timed out before spawn")
-        except Exception as e:
-            raise RuntimeError(f"Failed to create password-authenticated tunnel: {e}")
     def start_tunnels(self) -> Tuple[bool, str, str]:
         """Start SSH tunnels.
 
@@ -169,19 +132,18 @@ class SSHTunnel:
         """
         local_ip = self.detect_local_ip()
         
+        if not self.ssh_key_path:
+            return False, "SSH key not found. Please set up SSH keys for authentication.", local_ip
+
         console.print(f"[dim]Connecting to {self.username}@{self.pod_ip}:{self.ssh_port}[/dim]")
-        console.print(f"[dim]Auth: {'SSH key: ' + self.ssh_key_path if self.ssh_key_path else 'Password'}[/dim]")
+        console.print(f"[dim]Auth: SSH key: {self.ssh_key_path}[/dim]")
 
         for bind_addr in [local_ip, "127.0.0.1"]:
             try:
                 console.print(f"[dim]Trying to bind to {bind_addr}...[/dim]")
                 ssh_cmd = self._build_ssh_command(self.tunnels, bind_addr)
 
-                if self.ssh_key_path:
-                    process = self._create_tunnel_with_key(ssh_cmd)
-                else:
-                    process = self._create_tunnel_with_password(ssh_cmd)
-
+                process = self._create_tunnel_with_key(ssh_cmd)
                 self.processes.append(process)
 
                 # Verify process is still alive
