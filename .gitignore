@@ -211,3 +211,4 @@ __marimo__/
 *.wav
 agent-todo.md
 docs-internal/
+.sisyphus/
