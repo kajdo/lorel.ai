@@ -3,7 +3,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -17,6 +17,10 @@ class Config:
     max_cost_per_hour: float = 1.0
     docker_image: str = "kajdo/kokoro-fastapi:latest"
     container_disk_gb: int = 50
+    # Volume storage configuration
+    volume_disk_gb: Optional[int] = None
+    network_volume_id: Optional[str] = None
+    volume_mount_path: str = "/workspace"
     # Internal paths
     env_path: Path = field(default_factory=lambda: Path.cwd() / ".env", repr=False)
 
@@ -39,6 +43,11 @@ class Config:
         self.max_cost_per_hour = float(os.environ.get("MAX_COST_PER_HOUR", "") or "1.0")
         self.docker_image = os.environ.get("DOCKER_IMAGE", "") or "kajdo/kokoro-fastapi:latest"
         self.container_disk_gb = int(os.environ.get("CONTAINER_DISK_GB", "") or "50")
+
+        volume_disk_gb = os.environ.get("VOLUME_DISK_GB")
+        self.volume_disk_gb = int(volume_disk_gb) if volume_disk_gb else None
+        self.network_volume_id = os.environ.get("NETWORK_VOLUME_ID") or None
+        self.volume_mount_path = os.environ.get("VOLUME_MOUNT_PATH") or "/workspace"
     def validate(self) -> Tuple[bool, str]:
         """Validate configuration and return (is_valid, error_message)."""
         if not self.api_key:
@@ -71,9 +80,19 @@ class Config:
             "# Optional: Image to deploy",
             f"DOCKER_IMAGE={self.docker_image}",
             "",
-            "# Optional: Container disk size in GB",
+            "# Optional: Container disk size in GB (OS + temporary storage)",
             f"CONTAINER_DISK_GB={self.container_disk_gb}",
+            "",
+            "# Optional: Volume storage for persistent data",
         ]
+
+        if self.volume_disk_gb:
+            lines.append(f"VOLUME_DISK_GB={self.volume_disk_gb}")
+
+        if self.network_volume_id:
+            lines.append(f"NETWORK_VOLUME_ID={self.network_volume_id}")
+
+        lines.append(f"VOLUME_MOUNT_PATH={self.volume_mount_path}")
         
         with open(self.env_path, "w") as f:
             f.write("\n".join(lines) + "\n")

@@ -206,7 +206,10 @@ class RunPodAPIClient:
         ports: Optional[List[str]] = None,
         container_disk_gb: int = 50,
         is_spot: bool = False,
-        env: Optional[Dict[str, str]] = None
+        env: Optional[Dict[str, str]] = None,
+        volume_disk_gb: Optional[int] = None,
+        network_volume_id: Optional[str] = None,
+        volume_mount_path: str = "/workspace"
     ) -> Pod:
         """Create a new pod from Docker image (no template required)."""
         if ports is None:
@@ -227,6 +230,15 @@ class RunPodAPIClient:
 
         if env:
             data["env"] = env
+
+        if volume_disk_gb is not None:
+            data["volumeInGb"] = volume_disk_gb
+
+        if network_volume_id:
+            data["networkVolumeId"] = network_volume_id
+
+        if volume_disk_gb is not None or network_volume_id:
+            data["volumeMountPath"] = volume_mount_path
 
         response = self._request("POST", "/pods", data=data)
         return self._parse_pod(response)

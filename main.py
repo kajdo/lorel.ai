@@ -149,7 +149,10 @@ def cmd_deploy(args):
                 cloud_type=cloud_type,
                 is_spot=is_spot,
                 container_disk_gb=config.container_disk_gb,
-                public_key=public_key
+                public_key=public_key,
+                volume_disk_gb=config.volume_disk_gb,
+                network_volume_id=config.network_volume_id,
+                volume_mount_path=config.volume_mount_path
             )
             _current_pod_id = pod.id
             break  # Success!

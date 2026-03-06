@@ -26,7 +26,10 @@ class PodManager:
         cloud_type: str = "SECURE",
         is_spot: bool = False,
         container_disk_gb: int = 50,
-        public_key: Optional[str] = None
+        public_key: Optional[str] = None,
+        volume_disk_gb: Optional[int] = None,
+        network_volume_id: Optional[str] = None,
+        volume_mount_path: str = "/workspace"
     ) -> Pod:
         """Create a new pod with the specified configuration."""
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -40,6 +43,11 @@ class PodManager:
         console.print(f"  [dim]Image: {docker_image}[/dim]")
         console.print(f"  [dim]GPU: {gpu_type_id}[/dim]")
         console.print(f"  [dim]Cloud: {cloud_type}{' (Spot)' if is_spot else ''}[/dim]")
+        console.print(f"  [dim]Container Disk: {container_disk_gb} GB[/dim]")
+        if volume_disk_gb:
+            console.print(f"  [dim]Volume Disk: {volume_disk_gb} GB (persistent storage at {volume_mount_path})[/dim]")
+        if network_volume_id:
+            console.print(f"  [dim]Network Volume: {network_volume_id} (shared storage at {volume_mount_path})[/dim]")
         if public_key:
             console.print(f"  [dim]SSH: Certificate authentication configured[/dim]")
         pod = self.api_client.create_pod(
@@ -50,7 +58,10 @@ class PodManager:
             cloud_type=cloud_type,
             container_disk_gb=container_disk_gb,
             is_spot=is_spot,
-            env=env if env else None
+            env=env if env else None,
+            volume_disk_gb=volume_disk_gb,
+            network_volume_id=network_volume_id,
+            volume_mount_path=volume_mount_path
         )
 
         self.current_pod_id = pod.id

@@ -78,6 +78,28 @@ def run_interactive_setup(config: Optional[Config] = None) -> bool:
         required=False
     ))
 
+    console.print("\n[bold]Volume Storage Settings[/bold]")
+    console.print("[dim]Volume disk provides persistent storage for your data (e.g., downloaded models)[/dim]")
+
+    volume_disk_input = _prompt_with_default(
+        "Volume Disk (GB, optional)",
+        str(config.volume_disk_gb) if config.volume_disk_gb else "",
+        required=False
+    )
+    config.volume_disk_gb = int(volume_disk_input) if volume_disk_input else None
+
+    config.network_volume_id = _prompt_with_default(
+        "Network Volume ID (optional, for shared storage)",
+        config.network_volume_id or "",
+        required=False
+    )
+
+    config.volume_mount_path = _prompt_with_default(
+        "Volume Mount Path",
+        config.volume_mount_path,
+        required=False
+    )
+
     # Save configuration
     config.save()
 
